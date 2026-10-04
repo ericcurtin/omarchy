@@ -3,8 +3,10 @@
 # omarchy:summary=Remove llmman along with every model it pulled.
 # omarchy:requires-sudo=true
 
-# -u so an unset HOME is an error rather than a set of rm -rf paths rooted at /.
 set -euo pipefail
+
+# Before anything else: without HOME, touch nothing (rm -rf paths would root at /).
+: "${HOME:?HOME must be set}"
 
 # `llmman launch` and `llmman run` leave a `llmman serve` daemon behind,
 # detached from any terminal, with the store open and a model possibly still

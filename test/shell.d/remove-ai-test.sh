@@ -131,9 +131,11 @@ pass "llmman removal stops the serve daemon before deleting its store"
 
 # Without HOME the rm -rf paths would degrade to /-rooted ones; -u makes that a
 # refusal instead.
+: >"$TEST_LOG"
 if env -u HOME "$ROOT/bin/omarchy-remove-ai-llmman" >/dev/null 2>&1; then
   fail "llmman removal refuses to run without HOME"
 fi
+[[ ! -s $TEST_LOG ]] || fail "llmman removal touches nothing without HOME" "$(<"$TEST_LOG")"
 pass "llmman removal refuses to run without HOME"
 
 # The command alone is also provided by a cargo or curl install that
