@@ -23,6 +23,15 @@ printf 'pkill:%s\n' "$*" >>"$TEST_LOG"
 SCRIPT
 chmod +x "$tmp_dir/bin/pkill"
 
+# The remover also waits for the daemon to exit; the stub reports it still
+# running only when a test sets TEST_DAEMON_RUNNING, so the developer's own
+# daemon never matters.
+cat >"$tmp_dir/bin/pgrep" <<'SCRIPT'
+#!/bin/bash
+[[ -n ${TEST_DAEMON_RUNNING:-} ]]
+SCRIPT
+chmod +x "$tmp_dir/bin/pgrep"
+
 export TEST_LOG="$tmp_dir/log"
 export PATH="$tmp_dir/bin:$PATH"
 
@@ -137,6 +146,21 @@ if env -u HOME "$ROOT/bin/omarchy-remove-ai-llmman" >/dev/null 2>&1; then
 fi
 [[ ! -s $TEST_LOG ]] || fail "llmman removal touches nothing without HOME" "$(<"$TEST_LOG")"
 pass "llmman removal refuses to run without HOME"
+
+# A daemon that outlives the wait aborts the removal with the package and store
+# intact. sleep is stubbed so the full wait does not run in the test.
+mkdir -p "$HOME/.local/share/llmman"
+printf '#!/bin/bash\n' >"$tmp_dir/bin/sleep"
+chmod +x "$tmp_dir/bin/sleep"
+: >"$TEST_LOG"
+if TEST_DAEMON_RUNNING=1 "$ROOT/bin/omarchy-remove-ai-llmman" >/dev/null 2>&1; then
+  fail "llmman removal aborts while the serve daemon is still running"
+fi
+rm -f "$tmp_dir/bin/sleep"
+if grep -q '^drop:' "$TEST_LOG" || [[ ! -d $HOME/.local/share/llmman ]]; then
+  fail "llmman removal keeps the package and store while the serve daemon is still running"
+fi
+pass "llmman removal aborts while the serve daemon is still running"
 
 # The command alone is also provided by a cargo or curl install that
 # omarchy-pkg-drop will not touch, so the package is what the remover keys on.

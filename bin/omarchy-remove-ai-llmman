@@ -14,6 +14,17 @@ set -euo pipefail
 # matches the daemon's command line and no plain CLI invocation.
 pkill -TERM -f 'llmman serve' 2>/dev/null || true
 
+# A daemon that will not stop aborts the removal, rather than leaving it
+# running on a deleted package and store.
+for _ in {1..50}; do
+  pgrep -f 'llmman serve' >/dev/null || break
+  sleep 0.2
+done
+if pgrep -f 'llmman serve' >/dev/null; then
+  echo "Could not stop llmman serve; llmman was not removed." >&2
+  exit 1
+fi
+
 omarchy-pkg-drop llmman-bin
 
 # The store (an OCI layout of every pulled model), the llama.cpp releases it
