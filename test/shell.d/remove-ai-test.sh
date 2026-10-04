@@ -23,12 +23,14 @@ printf 'pkill:%s\n' "$*" >>"$TEST_LOG"
 SCRIPT
 chmod +x "$tmp_dir/bin/pkill"
 
-# omarchy-remove-ai-llmman waits for the daemon to exit; the stub reports it
-# still running only when a test sets TEST_DAEMON_RUNNING, so the developer's
+# omarchy-remove-ai-llmman waits for the daemon to exit. The stub reports it
+# running for as many calls as TEST_POLLS holds, then gone, so the developer's
 # own daemon never matters.
 cat >"$tmp_dir/bin/pgrep" <<'SCRIPT'
 #!/bin/bash
-[[ -n ${TEST_DAEMON_RUNNING:-} ]]
+polls=$(cat "$TEST_POLLS" 2>/dev/null || echo 0)
+((polls > 0)) || exit 1
+echo $((polls - 1)) >"$TEST_POLLS"
 SCRIPT
 chmod +x "$tmp_dir/bin/pgrep"
 
@@ -49,6 +51,7 @@ export TEST_GUM_LOG="$tmp_dir/gum-log"
 touch "$TEST_GUM_LOG"
 
 export TEST_LOG="$tmp_dir/log"
+export TEST_POLLS="$tmp_dir/polls"
 export PATH="$tmp_dir/bin:$PATH"
 
 fresh_home() {
@@ -270,14 +273,23 @@ mkdir -p "$HOME/.local/share/llmman"
 printf '#!/bin/bash\n' >"$tmp_dir/bin/sleep"
 chmod +x "$tmp_dir/bin/sleep"
 : >"$TEST_LOG"
-if TEST_DAEMON_RUNNING=1 "$ROOT/bin/omarchy-remove-ai-llmman" >/dev/null 2>&1; then
+echo 999 >"$TEST_POLLS"
+if "$ROOT/bin/omarchy-remove-ai-llmman" >/dev/null 2>&1; then
   fail "llmman removal aborts while the serve daemon is still running"
 fi
-rm -f "$tmp_dir/bin/sleep"
 if grep -q '^drop:' "$TEST_LOG" || [[ ! -d $HOME/.local/share/llmman ]]; then
   fail "llmman removal keeps the package and store while the serve daemon is still running"
 fi
 pass "llmman removal aborts while the serve daemon is still running"
+
+# One that exits while it is being waited on does not.
+: >"$TEST_LOG"
+echo 3 >"$TEST_POLLS"
+"$ROOT/bin/omarchy-remove-ai-llmman" >/dev/null || fail "llmman removal proceeds once the serve daemon exits"
+rm -f "$tmp_dir/bin/sleep"
+grep -qx 'drop:llmman-bin' "$TEST_LOG" && [[ ! -e $HOME/.local/share/llmman ]] ||
+  fail "llmman removal proceeds once the serve daemon exits"
+pass "llmman removal proceeds once the serve daemon exits"
 
 # The command alone is also provided by a cargo or curl install that
 # omarchy-pkg-drop will not touch, so the package is what the remover keys on.
